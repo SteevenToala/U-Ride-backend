@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  mysql-db:
+    image: mysql:8.0
+    container_name: uride-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uride-backend
+    restart: always
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - DB_HOST=mysql-db
+      - DB_PORT=3306
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET}
+      - HASH_SALT=${HASH_SALT}
+      - INSTITUTIONAL_EMAIL_DOMAIN=${INSTITUTIONAL_EMAIL_DOMAIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - TYPE=${TYPE}
+      - PROJECT_ID=${PROJECT_ID}
+      - PRIVATE_KEY_ID=${PRIVATE_KEY_ID}
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - CLIENT_EMAIL=${CLIENT_EMAIL}
+      - CLIENT_ID=${CLIENT_ID}
+      - AUTH_URI=${AUTH_URI}
+      - TOKEN_URI=${TOKEN_URI}
+      - AUTH_CERT_URL=${AUTH_CERT_URL}
+      - CLIENT_CERT_URL=${CLIENT_CERT_URL}
+      - UNIVERSAL_DOMAIN=${UNIVERSAL_DOMAIN}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASS=${EMAIL_PASS}
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
