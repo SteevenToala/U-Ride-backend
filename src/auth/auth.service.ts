@@ -149,7 +149,7 @@ export class AuthService {
         try {
             console.log(`Intentando enviar correo de recuperación a: ${email} usando cuenta: ${process.env.EMAIL_USER}`);
             const info = await transporter.sendMail({
-                from: `"Soporte InDriverClone" <${process.env.EMAIL_USER}>`,
+                from: `"Soporte U-RIDE" <${process.env.EMAIL_USER}>`,
                 to: email, // El correo del usuario
                 subject: "Recuperación de Contraseña",
                 text: `Hola ${userFound.name}. Has solicitado recuperar tu contraseña. \n\nTu código de recuperación es: ${resetCode}\n\nEste código expirará en 15 minutos.\nSi no fuiste tú, ignora este correo.`,
