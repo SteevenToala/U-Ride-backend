@@ -54,6 +54,8 @@ export class AuthService {
             email: normalizedEmail,
             institutional_verified: true,
             email_verification_code: null,
+            is_approved: true,
+            is_driver_approved: false
         });
 
         if (file) {
@@ -61,17 +63,9 @@ export class AuthService {
             newUser.image = imagePath;
         }
 
-        let rolesIds = [];
-        
-        if (user.rolesIds !== undefined && user.rolesIds !== null) { // DATA
-            rolesIds = user.rolesIds;
-        }
-        else {
-            rolesIds.push('STUDENT');
-        }
-        
-        const roles = await this.rolesRepository.findBy({ id: In(rolesIds) });
-        newUser.roles = roles;
+        // Everyone registers as STUDENT first
+        const studentRole = await this.rolesRepository.findOneBy({ id: 'STUDENT' });
+        newUser.roles = [studentRole];
 
         const userSaved = await this.usersRepository.save(newUser);
 
@@ -99,6 +93,10 @@ export class AuthService {
 
         if (!userFound.institutional_verified) {
             throw new HttpException('Cuenta pendiente de verificacion institucional', HttpStatus.FORBIDDEN);
+        }
+
+        if (!userFound.is_approved) {
+            throw new HttpException('Tu cuenta está pendiente de aprobación por un administrador', HttpStatus.FORBIDDEN);
         }
 
         if (userFound.is_suspended && (!userFound.suspended_until || userFound.suspended_until > new Date())) {

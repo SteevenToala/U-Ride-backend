@@ -12,7 +12,45 @@ export class UsersService {
 
     constructor(
         @InjectRepository(User) private usersRepository: Repository<User>,
+        @InjectRepository(Rol) private rolesRepository: Repository<Rol>,
     ) {}
+
+    async requestDriverRole(id: number) {
+        const userFound = await this.usersRepository.findOne({ 
+            where: { id },
+            relations: ['roles']
+        });
+
+        if (!userFound) {
+            throw new HttpException('Usuario no existe', HttpStatus.NOT_FOUND);
+        }
+
+        const driverRole = await this.rolesRepository.findOneBy({ id: 'DRIVER' });
+        if (!driverRole) {
+            throw new HttpException('El rol de conductor no existe en el sistema', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        // Check if user already has the role
+        const hasDriverRole = userFound.roles.some(rol => rol.id === 'DRIVER');
+        
+        if (!hasDriverRole) {
+            userFound.roles.push(driverRole);
+        }
+
+        userFound.is_driver_approved = false; // Requires admin approval
+        return this.usersRepository.save(userFound);
+    }
+
+    async approveDriverRole(id: number) {
+        const userFound = await this.usersRepository.findOneBy({ id });
+
+        if (!userFound) {
+            throw new HttpException('Usuario no existe', HttpStatus.NOT_FOUND);
+        }
+
+        userFound.is_driver_approved = true;
+        return this.usersRepository.save(userFound);
+    }
     
     create(user: CreateUserDto) {
         const newUser = this.usersRepository.create(user);
@@ -25,6 +63,16 @@ export class UsersService {
 
     findAll() {
         return this.usersRepository.find({ relations: ['roles'] });
+    }
+
+    async findPendingDrivers() {
+        const users = await this.usersRepository.find({ 
+            relations: ['roles'],
+            where: { is_driver_approved: false }
+        });
+
+        // Filter by role DRIVER manually since TypeORM many-to-many filtering can be complex for simple relations
+        return users.filter(user => user.roles.some(rol => rol.id === 'DRIVER'));
     }
 
     async update(id: number, user: UpdateUserDto) {

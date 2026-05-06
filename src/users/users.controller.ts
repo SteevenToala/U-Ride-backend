@@ -25,6 +25,13 @@ export class UsersController {
         return this.usersService.findAll();
     }
 
+    @HasRoles(JwtRole.ADMIN)
+    @UseGuards(JwtAuthGuard, JwtRolesGuard)
+    @Get('pending-drivers')
+    findPendingDrivers() {
+        return this.usersService.findPendingDrivers();
+    }
+
     @Post() // http://localhost/users -> POST 
     create(@Body() user: CreateUserDto) {
         return this.usersService.create(user);
@@ -67,6 +74,20 @@ export class UsersController {
         @Body() user: UpdateUserDto
     ) {
         return this.usersService.updateWithImage(file, id, user);
+    }
+
+    @HasRoles(JwtRole.STUDENT)
+    @UseGuards(JwtAuthGuard, JwtRolesGuard)
+    @Put('request-driver/:id')
+    requestDriverRole(@Param('id', ParseIntPipe) id: number) {
+        return this.usersService.requestDriverRole(id);
+    }
+
+    @HasRoles(JwtRole.ADMIN)
+    @UseGuards(JwtAuthGuard, JwtRolesGuard)
+    @Put('approve-driver/:id')
+    approveDriverRole(@Param('id', ParseIntPipe) id: number) {
+        return this.usersService.approveDriverRole(id);
     }
 
     @HasRoles(JwtRole.ADMIN)

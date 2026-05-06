@@ -52,6 +52,12 @@ export class User {
     @Column({ default: 0 })
     reputation_count: number;
 
+    @Column({ default: true })
+    is_approved: boolean;
+
+    @Column({ default: false })
+    is_driver_approved: boolean;
+
     @Column({ default: false })
     is_suspended: boolean;
 
