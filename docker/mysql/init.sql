@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS users (
   session_token VARCHAR(255),
   career VARCHAR(255),
   reference_zone VARCHAR(255),
+  institutional_verified BOOLEAN DEFAULT FALSE,
+  email_verification_code VARCHAR(255),
   is_suspended BOOLEAN DEFAULT FALSE,
   suspended_until DATETIME,
   reputation_average FLOAT DEFAULT 0,
@@ -123,11 +125,11 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 -- El hash corresponde a bcrypt salt=10
 
 -- Insertar Usuarios de Prueba
-INSERT IGNORE INTO users (id, name, lastname, email, password, career, reference_zone, reputation_average, reputation_count) VALUES
-(101, 'Juan', 'Perez', 'juan.perez@universidad.edu.co', '$2b$10$EpDNi1wO.0/l8Z.E0P/tTuTjUe7.rS2X.H1TqW1eYdM4qMhF/b1jC', 'Ingeniería', 'Zona Norte', 4.5, 2),
-(102, 'Maria', 'Gomez', 'maria.gomez@universidad.edu.co', '$2b$10$EpDNi1wO.0/l8Z.E0P/tTuTjUe7.rS2X.H1TqW1eYdM4qMhF/b1jC', 'Derecho', 'Zona Sur', 5.0, 1),
-(103, 'Carlos', 'Driver', 'carlos.driver@universidad.edu.co', '$2b$10$EpDNi1wO.0/l8Z.E0P/tTuTjUe7.rS2X.H1TqW1eYdM4qMhF/b1jC', 'Medicina', 'Centro', 4.8, 15),
-(104, 'Laura', 'Cond', 'laura.cond@universidad.edu.co', '$2b$10$EpDNi1wO.0/l8Z.E0P/tTuTjUe7.rS2X.H1TqW1eYdM4qMhF/b1jC', 'Arquitectura', 'Zona Este', 4.2, 8);
+INSERT IGNORE INTO users (id, name, lastname, email, password, career, reference_zone, institutional_verified, reputation_average, reputation_count) VALUES
+(101, 'Juan', 'Perez', 'juan.perez@universidad.edu.co', '$2b$10$hrnZQNwwD5bb.pXYRTI0remVQL3W1PBClS49gFq/pfwO/sCxrA4qK', 'Ingeniería', 'Zona Norte', true, 4.5, 2),
+(102, 'Maria', 'Gomez', 'maria.gomez@universidad.edu.co', '$2b$10$hrnZQNwwD5bb.pXYRTI0remVQL3W1PBClS49gFq/pfwO/sCxrA4qK', 'Derecho', 'Zona Sur', true, 5.0, 1),
+(103, 'Carlos', 'Driver', 'carlos.driver@universidad.edu.co', '$2b$10$hrnZQNwwD5bb.pXYRTI0remVQL3W1PBClS49gFq/pfwO/sCxrA4qK', 'Medicina', 'Centro', true, 4.8, 15),
+(104, 'Laura', 'Cond', 'laura.cond@universidad.edu.co', '$2b$10$hrnZQNwwD5bb.pXYRTI0remVQL3W1PBClS49gFq/pfwO/sCxrA4qK', 'Arquitectura', 'Zona Este', true, 4.2, 8);
 
 -- Asignar Roles a Usuarios de Prueba
 INSERT IGNORE INTO user_has_roles (id_user, id_rol) VALUES
