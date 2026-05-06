@@ -49,11 +49,14 @@ export class AuthService {
             }
         }
 
+        // Generar código de verificación de 6 dígitos
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
         const newUser = this.usersRepository.create({
             ...user,
             email: normalizedEmail,
-            institutional_verified: true,
-            email_verification_code: null,
+            institutional_verified: false, // Ahora inicia como falso
+            email_verification_code: verificationCode,
             is_approved: true,
             is_driver_approved: false
         });
@@ -69,7 +72,21 @@ export class AuthService {
 
         const userSaved = await this.usersRepository.save(newUser);
 
-        const rolesString = userSaved.roles.map(rol => rol.id); //['CLIENT', 'ADMIN']
+        // Enviar correo de verificación
+        try {
+            console.log(`Intentando enviar correo de verificación a: ${normalizedEmail}`);
+            await this.sendEmail(
+                normalizedEmail,
+                'Verificación de Cuenta - U-RIDE',
+                `Hola ${userSaved.name}. Bienvenido a U-RIDE.\n\nPara activar tu cuenta, ingresa el siguiente código de verificación: ${verificationCode}\n\nSi no te registraste en nuestra plataforma, ignora este mensaje.`
+            );
+            console.log(`Correo de verificación enviado exitosamente a: ${normalizedEmail}`);
+        } catch (error) {
+            console.error('Error al enviar correo de verificación:', error);
+            // No bloqueamos el registro si el correo falla, pero informamos al usuario (opcional)
+        }
+
+        const rolesString = newUser.roles.map(rol => rol.id); // Usamos newUser para asegurar que roles existe
         const payload = { id: userSaved.id, name: userSaved.name, roles: rolesString };
         const token = this.jwtService.sign(payload);
         const data = {
@@ -78,6 +95,56 @@ export class AuthService {
         }
         delete data.user.password;
         return data;
+    }
+
+    async verifyAccount(email: string, code: string) {
+        const normalizedEmail = email.trim().toLowerCase();
+        const userFound = await this.usersRepository.findOneBy({ email: normalizedEmail });
+
+        if (!userFound) {
+            throw new HttpException('El correo no existe', HttpStatus.NOT_FOUND);
+        }
+
+        if (userFound.institutional_verified) {
+            return {
+                success: true,
+                message: 'La cuenta ya se encuentra verificada'
+            };
+        }
+
+        if (userFound.email_verification_code !== code) {
+            throw new HttpException('El código de verificación es incorrecto', HttpStatus.BAD_REQUEST);
+        }
+
+        userFound.institutional_verified = true;
+        userFound.email_verification_code = null;
+        await this.usersRepository.save(userFound);
+
+        return {
+            success: true,
+            message: 'Cuenta verificada exitosamente'
+        };
+    }
+
+    private async sendEmail(to: string, subject: string, text: string) {
+        console.log(`Preparando transporter para: ${to}`);
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            },
+        });
+
+        console.log(`Enviando correo desde: ${process.env.EMAIL_USER} a: ${to} con asunto: ${subject}`);
+        const result = await transporter.sendMail({
+            from: `"Soporte U-RIDE" <${process.env.EMAIL_USER}>`,
+            to,
+            subject,
+            text,
+        });
+        console.log(`Resultado de sendMail: ${result.messageId}`);
+        return result;
     }
 
     async login(loginData: LoginAuthDto) {
@@ -137,24 +204,12 @@ export class AuthService {
         // Crear un token simple o código de recuperación (solo para demostración, idealmente usarías JWT y lo guardarías en DB)
         const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // Configurar transporter
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            },
-        });
-
         try {
-            console.log(`Intentando enviar correo de recuperación a: ${email} usando cuenta: ${process.env.EMAIL_USER}`);
-            const info = await transporter.sendMail({
-                from: `"Soporte U-RIDE" <${process.env.EMAIL_USER}>`,
-                to: email, // El correo del usuario
-                subject: "Recuperación de Contraseña",
-                text: `Hola ${userFound.name}. Has solicitado recuperar tu contraseña. \n\nTu código de recuperación es: ${resetCode}\n\nEste código expirará en 15 minutos.\nSi no fuiste tú, ignora este correo.`,
-            });
-            console.log(`Correo enviado correctamente: ${info.messageId}`);
+            await this.sendEmail(
+                normalizedEmail,
+                "Recuperación de Contraseña",
+                `Hola ${userFound.name}. Has solicitado recuperar tu contraseña. \n\nTu código de recuperación es: ${resetCode}\n\nEste código expirará en 15 minutos.\nSi no fuiste tú, ignora este correo.`
+            );
             
             // Guardar en la base de datos el codigo y la expiracion (15 minutos)
             userFound.reset_password_code = resetCode;

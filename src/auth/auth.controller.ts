@@ -17,6 +17,10 @@ export class AuthController {
     ) {
         return this.authService.register(user, file);
     }
+    @Post('verify-account') // http://localhost/auth/verify-account -> POST
+    verifyAccount(@Body('email') email: string, @Body('code') code: string) {
+        return this.authService.verifyAccount(email, code);
+    }
     
     
     @Post('login') // http://localhost/auth/login -> POST 
