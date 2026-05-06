@@ -2,15 +2,26 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // CORS - permite peticiones desde el admin web panel y apps móviles
+  // CORS - permitir peticiones desde cualquier origen (IMPORTANTE: debe ir antes de los assets estáticos)
   app.enableCors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    credentials: true,
+  });
+
+  // Servir archivos estáticos (imágenes de perfil, etc.) desde la carpeta uploads
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+    setHeaders: (res) => {
+      res.set('Access-Control-Allow-Origin', '*');
+    },
   });
 
   // Validación global de DTOs

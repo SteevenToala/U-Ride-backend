@@ -27,6 +27,7 @@ RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force
 
 # Copiar artefactos compilados desde el builder
 COPY --from=builder /app/dist ./dist
+COPY serviceAccountKey.json ./
 
 # Variables de entorno por defecto (se sobreescriben desde docker-compose)
 ENV NODE_ENV=production \

@@ -8,6 +8,7 @@ import { LoginAuthDto } from './dto/login-auth.dto';
 import { compare, hash } from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { Rol } from '../roles/rol.entity';
+import { saveLocalFile } from '../utils/local_storage';
 
 
 @Injectable()
@@ -20,7 +21,7 @@ export class AuthService {
         private jwtService: JwtService
     ) {}
 
-    async register(user: RegisterAuthDto) {
+    async register(user: RegisterAuthDto, file?: Express.Multer.File) {
         const { email, phone } = user;
         const normalizedEmail = email.trim().toLowerCase();
         const emailExist = await this.usersRepository.findOneBy({ email: normalizedEmail });
@@ -54,6 +55,12 @@ export class AuthService {
             institutional_verified: true,
             email_verification_code: null,
         });
+
+        if (file) {
+            const imagePath = await saveLocalFile(file, 'users');
+            newUser.image = imagePath;
+        }
+
         let rolesIds = [];
         
         if (user.rolesIds !== undefined && user.rolesIds !== null) { // DATA

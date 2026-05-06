@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Rol } from '../roles/rol.entity';
-import storage = require('../utils/cloud_storage');
+import { saveLocalFile } from '../utils/local_storage';
 
 @Injectable()
 export class UsersService {
@@ -54,10 +54,9 @@ export class UsersService {
     
 
     async updateWithImage(file: Express.Multer.File, id: number, user: UpdateUserDto) {
-        const url = await storage(file, file.originalname);
-        console.log('URL: ' + url);
+        const relativePath = await saveLocalFile(file, 'users');
         
-        if (url === undefined && url === null) {
+        if (!relativePath) {
             throw new HttpException('La imagen no se pudo guardar', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
@@ -66,7 +65,10 @@ export class UsersService {
         if (!userFound) {
             throw new HttpException('Usuario no existe', HttpStatus.NOT_FOUND);
         }
-        user.image = url;
+        
+        // En un entorno real, podrías querer guardar la URL completa incluyendo el host
+        // Por ahora guardamos la ruta relativa que empieza por /uploads/
+        user.image = relativePath; 
         const updatedUser = Object.assign(userFound, user);
         return this.usersRepository.save(updatedUser);
     }
