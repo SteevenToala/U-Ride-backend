@@ -17,6 +17,10 @@ export class TripReservationsService {
     const trip = await this.tripRepository.findOne({ where: { id: reservationData.id_trip } });
     if (!trip) throw new NotFoundException('Trip not found');
 
+    if (trip.id_driver === reservationData.id_passenger) {
+      throw new BadRequestException('El conductor no puede reservar su propio viaje');
+    }
+
     if (trip.available_seats < (reservationData.seats_requested || 1)) {
       throw new BadRequestException('Not enough available seats');
     }
