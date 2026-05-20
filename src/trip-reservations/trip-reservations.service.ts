@@ -70,13 +70,13 @@ export class TripReservationsService {
 
     // Handle seat availability logic
     if (status === 'ACCEPTED' && reservation.status !== 'ACCEPTED') {
-      if (reservation.trip.available_seats < reservation.seats_requested) {
+      if (Number(reservation.trip.available_seats) < Number(reservation.seats_requested)) {
         throw new BadRequestException('Not enough seats to accept this reservation');
       }
-      reservation.trip.available_seats -= reservation.seats_requested;
+      reservation.trip.available_seats = Number(reservation.trip.available_seats) - Number(reservation.seats_requested);
       await this.tripRepository.save(reservation.trip);
     } else if ((status === 'REJECTED' || status === 'CANCELLED') && reservation.status === 'ACCEPTED') {
-      reservation.trip.available_seats += reservation.seats_requested;
+      reservation.trip.available_seats = Number(reservation.trip.available_seats) + Number(reservation.seats_requested);
       await this.tripRepository.save(reservation.trip);
     }
 
