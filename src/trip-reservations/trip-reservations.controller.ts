@@ -1,0 +1,37 @@
+import { Controller, Post, Body, Get, Param, Put } from '@nestjs/common';
+import { TripReservationsService } from './trip-reservations.service';
+
+@Controller('trip-reservations')
+export class TripReservationsController {
+  constructor(private readonly reservationsService: TripReservationsService) {}
+
+  @Post()
+  async create(@Body() reservationData: any) {
+    return await this.reservationsService.create(reservationData);
+  }
+
+  @Get('trip/:idTrip')
+  async getByTrip(@Param('idTrip') idTrip: number) {
+    return await this.reservationsService.getByTrip(idTrip);
+  }
+
+  @Get('passenger/:idPassenger')
+  async getByPassenger(@Param('idPassenger') idPassenger: number) {
+    return await this.reservationsService.getByPassenger(idPassenger);
+  }
+
+  @Put(':id/accept')
+  async accept(@Param('id') id: number) {
+    return await this.reservationsService.updateStatus(id, 'ACCEPTED');
+  }
+
+  @Put(':id/reject')
+  async reject(@Param('id') id: number) {
+    return await this.reservationsService.updateStatus(id, 'REJECTED');
+  }
+
+  @Put(':id/cancel')
+  async cancel(@Param('id') id: number) {
+    return await this.reservationsService.updateStatus(id, 'CANCELLED');
+  }
+}

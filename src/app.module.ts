@@ -16,6 +16,8 @@ import { ReportsModule } from './reports/reports.module';
 import { AuditLogsModule } from './audit_logs/audit_logs.module';
 import { SeedModule } from './seed/seed.module';
 import { FirebaseModule } from './firebase/firebase.module';
+import { SharedTripsModule } from './shared-trips/shared-trips.module';
+import { TripReservationsModule } from './trip-reservations/trip-reservations.module';
 
 @Module({
   imports: [
@@ -60,6 +62,10 @@ import { FirebaseModule } from './firebase/firebase.module';
     
     // Firebase para notificaciones / autenticación extra
     FirebaseModule,
+
+    // Módulos nuevos U-Ride
+    SharedTripsModule,
+    TripReservationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
