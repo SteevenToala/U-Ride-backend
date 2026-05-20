@@ -42,7 +42,7 @@ export class SharedTripsController {
 
   @Put(':id/finish')
   finishTrip(@Param('id') id: string) {
-    return this.sharedTripsService.update(+id, { status: 'COMPLETED' });
+    return this.sharedTripsService.update(+id, { status: 'FINISHED' });
   }
 
   @Put(':id/cancel')

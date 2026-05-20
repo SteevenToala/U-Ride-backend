@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SharedTrip } from './entities/shared-trip.entity';
@@ -50,6 +50,12 @@ export class SharedTripsService {
 
   async remove(id: number) {
     const trip = await this.findOne(id);
+    // Los viajes finalizados no se pueden eliminar (son registro histórico)
+    if (trip.status === 'FINISHED') {
+      throw new BadRequestException(
+        'No se puede eliminar un viaje que ya fue completado'
+      );
+    }
     await this.sharedTripsRepository.remove(trip);
     return { success: true };
   }

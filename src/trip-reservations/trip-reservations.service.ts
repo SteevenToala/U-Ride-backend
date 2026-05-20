@@ -54,7 +54,17 @@ export class TripReservationsService {
     
     if (!reservation) throw new NotFoundException('Reservation not found');
 
-    // Handle seat availability logic if needed
+    // Un pasajero no puede cancelar si el viaje ya inició o finalizó
+    if (status === 'CANCELLED') {
+      const tripStatus = reservation.trip?.status;
+      if (tripStatus === 'ACTIVE' || tripStatus === 'FINISHED') {
+        throw new BadRequestException(
+          'No se puede cancelar la reserva porque el viaje ya inició o finalizó'
+        );
+      }
+    }
+
+    // Handle seat availability logic
     if (status === 'ACCEPTED' && reservation.status !== 'ACCEPTED') {
       if (reservation.trip.available_seats < reservation.seats_requested) {
         throw new BadRequestException('Not enough seats to accept this reservation');
