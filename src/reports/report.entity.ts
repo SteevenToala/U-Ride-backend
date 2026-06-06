@@ -4,6 +4,7 @@ import { User } from 'src/users/user.entity';
 export enum ReportStatus {
   OPEN = 'OPEN',
   REVIEWED = 'REVIEWED',
+  WARNED = 'WARNED',
   ACTION_APPLIED = 'ACTION_APPLIED',
   DISMISSED = 'DISMISSED',
 }
