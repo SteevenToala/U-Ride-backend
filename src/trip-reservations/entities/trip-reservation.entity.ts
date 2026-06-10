@@ -30,6 +30,15 @@ export class TripReservation {
   @Column({ nullable: true })
   message: string;
 
+  @Column({ name: 'payment_method', default: 'EFECTIVO' }) // EFECTIVO, PAYPAL
+  payment_method: string;
+
+  @Column({ name: 'payment_status', default: 'PENDIENTE' }) // PENDIENTE, PAGADO
+  payment_status: string;
+
+  @Column({ name: 'paypal_order_id', nullable: true })
+  paypal_order_id: string;
+
   @CreateDateColumn()
   created_at: Date;
 

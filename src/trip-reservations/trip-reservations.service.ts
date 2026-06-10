@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TripReservation } from './entities/trip-reservation.entity';
 import { SharedTrip } from '../shared-trips/entities/shared-trip.entity';
+import { PaypalService } from './paypal.service';
 
 @Injectable()
 export class TripReservationsService {
@@ -11,6 +12,7 @@ export class TripReservationsService {
     private readonly reservationRepository: Repository<TripReservation>,
     @InjectRepository(SharedTrip)
     private readonly tripRepository: Repository<SharedTrip>,
+    private readonly paypalService: PaypalService,
   ) {}
 
   async create(reservationData: any): Promise<TripReservation> {
@@ -25,11 +27,31 @@ export class TripReservationsService {
       throw new BadRequestException('Not enough available seats');
     }
 
+    const paymentMethod = reservationData.payment_method || 'EFECTIVO';
+    let paymentStatus = 'PENDIENTE';
+
+    // Si el pago es con PayPal, verificamos la orden contra la API de PayPal antes de reservar
+    if (paymentMethod === 'PAYPAL') {
+      const paypalOrderId = reservationData.paypal_order_id;
+      if (!paypalOrderId) {
+        throw new BadRequestException('Falta el identificador de la orden de PayPal');
+      }
+
+      const { success, message } = await this.paypalService.verifyOrder(paypalOrderId);
+      if (!success) {
+        throw new BadRequestException(message);
+      }
+      paymentStatus = 'PAGADO';
+    }
+
     const newReservation = this.reservationRepository.create({
       id_trip: reservationData.id_trip,
       id_passenger: reservationData.id_passenger,
       seats_requested: reservationData.seats_requested || 1,
       message: reservationData.message,
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
+      paypal_order_id: paymentMethod === 'PAYPAL' ? reservationData.paypal_order_id : null,
     });
     return await this.reservationRepository.save(newReservation);
   }
