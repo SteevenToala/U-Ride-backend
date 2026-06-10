@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -8,14 +8,104 @@ export interface PaypalVerificationResult {
 }
 
 /**
- * Verifica y captura órdenes de PayPal contra la API REST de PayPal.
- * Puerto de la verificación usada en u2_proyecto_flask (compras_controller.verificar_pago_paypal).
+ * Recibe y captura órdenes de PayPal contra la API REST de PayPal.
  */
 @Injectable()
 export class PaypalService {
   private readonly logger = new Logger(PaypalService.name);
 
   constructor(private readonly configService: ConfigService) { }
+
+  private async getAccessToken(clientId: string, secret: string, baseUrl: string): Promise<string | null> {
+    try {
+      const tokenResponse = await axios.post(
+        `${baseUrl}/v1/oauth2/token`,
+        'grant_type=client_credentials',
+        {
+          auth: { username: clientId, password: secret },
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en_US',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          validateStatus: () => true,
+        },
+      );
+
+      if (tokenResponse.status !== 200) {
+        this.logger.error(`PayPal Token Error: Status ${tokenResponse.status}, Data: ${JSON.stringify(tokenResponse.data)}`);
+        return null;
+      }
+      return tokenResponse.data.access_token;
+    } catch (e) {
+      this.logger.error(`Error al obtener token de PayPal: ${e.message}`);
+      return null;
+    }
+  }
+
+  async createOrder(amount: number): Promise<{ id: string; approveUrl: string }> {
+    const clientId = this.configService.get<string>('PAYPAL_CLIENT_ID');
+    const secret = this.configService.get<string>('PAYPAL_SECRET');
+    const environment = this.configService.get<string>('PAYPAL_ENV', 'sandbox');
+
+    const baseUrl =
+      environment === 'sandbox'
+        ? 'https://api-m.sandbox.paypal.com'
+        : 'https://api-m.paypal.com';
+
+    if (!clientId || !secret) {
+      throw new InternalServerErrorException('Faltan las credenciales de PayPal (PAYPAL_CLIENT_ID o PAYPAL_SECRET) en el archivo .env del servidor');
+    }
+
+    const accessToken = await this.getAccessToken(clientId, secret, baseUrl);
+    if (!accessToken) {
+      throw new InternalServerErrorException('Error de autenticación con PayPal (Verifica las credenciales en el .env)');
+    }
+
+    try {
+      const response = await axios.post(
+        `${baseUrl}/v2/checkout/orders`,
+        {
+          intent: 'CAPTURE',
+          purchase_units: [
+            {
+              amount: {
+                currency_code: 'USD',
+                value: amount.toFixed(2),
+              },
+            },
+          ],
+          application_context: {
+            brand_name: 'U-Ride',
+            landing_page: 'NO_PREFERENCE',
+            user_action: 'PAY_NOW',
+            return_url: 'https://j0e.site/#/payment-success',
+            cancel_url: 'https://j0e.site/#/payment-cancel',
+          },
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          validateStatus: () => true,
+        },
+      );
+
+      if (response.status === 200 || response.status === 201) {
+        const approveLink = response.data.links.find((link: any) => link.rel === 'approve');
+        return {
+          id: response.data.id,
+          approveUrl: approveLink ? approveLink.href : '',
+        };
+      }
+      
+      throw new BadRequestException(`PayPal respondió con error al crear orden: Status ${response.status}`);
+    } catch (error) {
+      this.logger.error(`Error al crear orden en PayPal: ${error.message}`);
+      throw new BadRequestException(`Error al conectar con PayPal para crear orden: ${error.message}`);
+    }
+  }
 
   async verifyOrder(orderId: string): Promise<PaypalVerificationResult> {
     const clientId = this.configService.get<string>('PAYPAL_CLIENT_ID');
@@ -45,28 +135,13 @@ export class PaypalService {
 
     try {
       // 1. Obtener token de acceso de PayPal
-      const tokenResponse = await axios.post(
-        `${baseUrl}/v1/oauth2/token`,
-        'grant_type=client_credentials',
-        {
-          auth: { username: clientId, password: secret },
-          headers: {
-            Accept: 'application/json',
-            'Accept-Language': 'en_US',
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          validateStatus: () => true,
-        },
-      );
-
-      if (tokenResponse.status !== 200) {
+      const accessToken = await this.getAccessToken(clientId, secret, baseUrl);
+      if (!accessToken) {
         return {
           success: false,
           message: 'Error de autenticación con PayPal (Verifica tus credenciales en el .env)',
         };
       }
-
-      const accessToken = tokenResponse.data.access_token;
 
       // 2. Capturar el pago (verificar que el usuario pagó)
       const captureResponse = await axios.post(

@@ -44,6 +44,19 @@ export class SharedTripsService {
     // Excluir 'id' del body para que TypeORM no sobreescriba la PK con null
     // (lo cual causaría un INSERT en lugar de UPDATE)
     const { id: _ignored, ...safeData } = updateData;
+
+    // Si el viaje se va a iniciar ('ACTIVE'), cancelamos automáticamente las reservas no pagadas
+    if (safeData.status === 'ACTIVE' && trip.status !== 'ACTIVE') {
+      await this.sharedTripsRepository.manager.createQueryBuilder()
+        .update('trip_reservations')
+        .set({ status: 'CANCELLED' })
+        .where('id_trip = :id_trip AND payment_status = :payment_status', { 
+          id_trip: id, 
+          payment_status: 'PENDIENTE' 
+        })
+        .execute();
+    }
+
     this.sharedTripsRepository.merge(trip, safeData);
     return await this.sharedTripsRepository.save(trip);
   }

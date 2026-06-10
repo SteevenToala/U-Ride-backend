@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import * as path from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
@@ -21,8 +22,12 @@ import { TripReservationsModule } from './trip-reservations/trip-reservations.mo
 
 @Module({
   imports: [
-    // Configuración global - lee variables de entorno
-    ConfigModule.forRoot({ isGlobal: true, cache: true }),
+    // Configuración global - lee variables de entorno de forma segura
+    ConfigModule.forRoot({ 
+      isGlobal: true, 
+      cache: true,
+      envFilePath: path.resolve(__dirname, '..', '.env'),
+    }),
 
     // TypeORM - configuración desde variables de entorno
     TypeOrmModule.forRootAsync({

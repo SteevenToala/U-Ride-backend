@@ -53,6 +53,9 @@ services:
       - UNIVERSAL_DOMAIN=${UNIVERSAL_DOMAIN}
       - EMAIL_USER=${EMAIL_USER}
       - EMAIL_PASS=${EMAIL_PASS}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
+      - PAYPAL_SECRET=${PAYPAL_SECRET}
+      - PAYPAL_ENV=${PAYPAL_ENV}
     depends_on:
       mysql-db:
         condition: service_healthy

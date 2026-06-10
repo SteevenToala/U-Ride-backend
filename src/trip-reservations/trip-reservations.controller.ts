@@ -10,6 +10,11 @@ export class TripReservationsController {
     return await this.reservationsService.create(reservationData);
   }
 
+  @Post('paypal/create-order')
+  async createPaypalOrder(@Body('amount') amount: number) {
+    return await this.reservationsService.createPaypalOrder(amount);
+  }
+
   @Get('trip/:idTrip')
   async getByTrip(@Param('idTrip') idTrip: number) {
     return await this.reservationsService.getByTrip(idTrip);
@@ -33,5 +38,10 @@ export class TripReservationsController {
   @Put(':id/cancel')
   async cancel(@Param('id') id: number) {
     return await this.reservationsService.updateStatus(id, 'CANCELLED');
+  }
+
+  @Put(':id/confirm-payment')
+  async confirmPayment(@Param('id') id: number) {
+    return await this.reservationsService.confirmPayment(id);
   }
 }

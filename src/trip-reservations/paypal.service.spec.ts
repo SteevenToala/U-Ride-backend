@@ -105,6 +105,13 @@ describe('PaypalService (Unit Tests)', () => {
     });
 
     it('debe retornar error si ocurre una excepción de red o de axios', async () => {
+      // 1. Mock token request success
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 200,
+        data: { access_token: 'mock-access-token' },
+      });
+
+      // 2. Mock capture network failure
       mockedAxios.post.mockRejectedValueOnce(new Error('Conexión perdida'));
 
       const result = await service.verifyOrder('order-id-123');
