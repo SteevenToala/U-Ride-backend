@@ -15,7 +15,7 @@ export interface PaypalVerificationResult {
 export class PaypalService {
   private readonly logger = new Logger(PaypalService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   async verifyOrder(orderId: string): Promise<PaypalVerificationResult> {
     const clientId = this.configService.get<string>('PAYPAL_CLIENT_ID');
@@ -31,6 +31,15 @@ export class PaypalService {
       return {
         success: false,
         message: 'Error de autenticación con PayPal (Verifica tus credenciales en el .env)',
+      };
+    }
+
+    // Bypass para demostración/simulación académica de Flutter
+    if (orderId && orderId.startsWith('PAY-')) {
+      this.logger.log(`[PayPal Bypass] Procesando orden simulada de frontend: ${orderId}`);
+      return {
+        success: true,
+        message: 'Pago completado',
       };
     }
 
