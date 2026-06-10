@@ -25,6 +25,11 @@ export class TripReservationsController {
     return await this.reservationsService.getByPassenger(idPassenger);
   }
 
+  @Put(':id')
+  async update(@Param('id') id: number, @Body() updateData: any) {
+    return await this.reservationsService.update(id, updateData);
+  }
+
   @Put(':id/accept')
   async accept(@Param('id') id: number) {
     return await this.reservationsService.updateStatus(id, 'ACCEPTED');
@@ -43,5 +48,10 @@ export class TripReservationsController {
   @Put(':id/confirm-payment')
   async confirmPayment(@Param('id') id: number) {
     return await this.reservationsService.confirmPayment(id);
+  }
+
+  @Put(':id/pay-paypal')
+  async payPaypal(@Param('id') id: number, @Body('paypal_order_id') paypalOrderId: string) {
+    return await this.reservationsService.payPaypal(id, paypalOrderId);
   }
 }

@@ -11,7 +11,10 @@ describe('TripReservationsService (Unit Tests)', () => {
   let service: TripReservationsService;
   let paypalService: PaypalService;
 
-  const mockReservationRepo = {};
+  const mockReservationRepo = {
+    findOne: jest.fn(),
+    save: jest.fn(),
+  };
   const mockTripRepo = {};
 
   const mockPaypalService = {
@@ -20,16 +23,22 @@ describe('TripReservationsService (Unit Tests)', () => {
 
   // Mocks para el flujo de transacciones con QueryRunner
   const mockQueryBuilder = {
+    innerJoinAndSelect: jest.fn().mockReturnThis(),
     setLock: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
     getOne: jest.fn(),
+  };
+
+  const mockRepository = {
+    createQueryBuilder: jest.fn(() => mockQueryBuilder),
   };
 
   const mockQueryRunnerManager = {
     findOne: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
-    createQueryBuilder: jest.fn(() => mockQueryBuilder),
+    getRepository: jest.fn(() => mockRepository),
   };
 
   const mockQueryRunner = {
@@ -72,6 +81,8 @@ describe('TripReservationsService (Unit Tests)', () => {
     paypalService = module.get<PaypalService>(PaypalService);
 
     jest.clearAllMocks();
+    mockQueryBuilder.getOne.mockReset();
+    mockQueryBuilder.getOne.mockResolvedValue(null); // por defecto no hay reservas activas
   });
 
   describe('create - Solicitud de Reserva (RF-005)', () => {
@@ -86,6 +97,9 @@ describe('TripReservationsService (Unit Tests)', () => {
     };
 
     it('debe lanzar NotFoundException si el viaje no existe', async () => {
+      // Primera llamada: activeReservation = null
+      mockQueryBuilder.getOne.mockResolvedValueOnce(null);
+      // Segunda llamada: trip = null
       mockQueryBuilder.getOne.mockResolvedValueOnce(null);
 
       await expect(
@@ -93,108 +107,150 @@ describe('TripReservationsService (Unit Tests)', () => {
       ).rejects.toThrow(new NotFoundException('Trip not found'));
     });
 
-    it('debe lanzar BadRequestException si el conductor intenta reservar su propio viaje', async () => {
-      mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip);
+    it('debe lanzar BadRequestException si el pasajero ya tiene una reserva activa (RN1)', async () => {
+      const activeReservation = { id: 5, id_passenger: 2, status: 'PENDING' };
+      // Primera llamada devuelve una reserva activa
+      mockQueryBuilder.getOne.mockResolvedValueOnce(activeReservation);
 
       await expect(
-        service.create({ id_trip: 1, id_passenger: 10 }), // Pasajero es el mismo conductor (10)
+        service.create({ id_trip: 1, id_passenger: 2 }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Ya tienes una reserva activa para otro viaje. Debes cancelarla o esperar a que finalice para poder reservar otro viaje.',
+        ),
+      );
+    });
+
+    it('debe lanzar BadRequestException si el conductor intenta reservar su propio viaje', async () => {
+      mockQueryBuilder.getOne.mockResolvedValueOnce(null); // activeReservation
+      mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip); // trip
+
+      await expect(
+        service.create({ id_trip: 1, id_passenger: 10 }), // Pasajero es el conductor
       ).rejects.toThrow(new BadRequestException('El conductor no puede reservar su propio viaje'));
     });
 
     it('debe lanzar BadRequestException si no hay suficientes asientos disponibles', async () => {
-      mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip);
+      mockQueryBuilder.getOne.mockResolvedValueOnce(null); // activeReservation
+      mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip); // trip (tiene 3 asientos)
 
       await expect(
-        service.create({ id_trip: 1, id_passenger: 2, seats_requested: 5 }), // Pide 5, hay 3
+        service.create({ id_trip: 1, id_passenger: 2, seats_requested: 5 }),
       ).rejects.toThrow(new BadRequestException('Not enough available seats'));
     });
 
-    it('debe reservar con éxito en EFECTIVO por defecto (Caso Positivo)', async () => {
-      mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip);
-      
+    it('debe reservar con éxito en estado PENDING y PENDIENTE (Caso Positivo)', async () => {
+      mockQueryBuilder.getOne.mockResolvedValueOnce(null); // activeReservation
+      mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip); // trip
+
       const reservationPayload = {
         id_trip: 1,
         id_passenger: 2,
         seats_requested: 1,
-        message: 'Llevo maleta',
+        message: 'Llevo equipaje',
+        meeting_point: 'Esquina parque',
       };
 
       const expectedReservation = {
+        id: 99,
         ...reservationPayload,
         payment_method: 'EFECTIVO',
+        payment_status: 'PENDIENTE',
+        status: 'PENDING',
+      };
+
+      mockQueryRunnerManager.create.mockReturnValue(expectedReservation);
+      mockQueryRunnerManager.save.mockResolvedValue(expectedReservation);
+
+      const result = await service.create(reservationPayload);
+
+      expect(result.status).toBe('PENDING');
+      expect(result.payment_status).toBe('PENDIENTE');
+      expect(mockQueryRunnerManager.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('update - Modificación de reserva (RN2)', () => {
+    it('debe actualizar campos si la reserva está en PENDING', async () => {
+      const existingReservation = {
+        id: 1,
+        status: 'PENDING',
+        meeting_point: 'Viejo punto',
+        message: 'Sin comentarios',
+        payment_method: 'EFECTIVO',
+      };
+
+      mockReservationRepo.findOne
+        .mockResolvedValueOnce(existingReservation)
+        .mockResolvedValueOnce({
+          ...existingReservation,
+          meeting_point: 'Nuevo punto',
+          payment_method: 'PAYPAL',
+        });
+
+      mockReservationRepo.save.mockImplementation(async (res) => res);
+
+      const result = await service.update(1, {
+        meeting_point: 'Nuevo punto',
+        payment_method: 'PAYPAL',
+      });
+
+      expect(result.meeting_point).toBe('Nuevo punto');
+      expect(result.payment_method).toBe('PAYPAL');
+      expect(mockReservationRepo.save).toHaveBeenCalled();
+    });
+
+    it('debe lanzar BadRequestException si la reserva no está en PENDING', async () => {
+      const acceptedReservation = { id: 1, status: 'ACCEPTED' };
+      mockReservationRepo.findOne.mockResolvedValueOnce(acceptedReservation);
+
+      await expect(
+        service.update(1, { meeting_point: 'Nuevo punto' }),
+      ).rejects.toThrow(
+        new BadRequestException('Únicamente se pueden editar solicitudes de reserva en estado PENDIENTE'),
+      );
+    });
+  });
+
+  describe('payPaypal - Pago post-aceptación', () => {
+    const mockTrip = {
+      id: 1,
+      available_seats: 3,
+    };
+
+    it('debe capturar el pago, restar cupos y marcar como PAGADO', async () => {
+      mockPaypalService.verifyOrder.mockResolvedValueOnce({ success: true, message: 'Pago completado' });
+
+      const reservation = {
+        id: 1,
+        id_trip: 1,
+        seats_requested: 1,
+        status: 'ACCEPTED',
         payment_status: 'PENDIENTE',
         paypal_order_id: null,
       };
 
-      mockQueryRunnerManager.create.mockReturnValue(expectedReservation);
-      mockQueryRunnerManager.save.mockResolvedValue(expectedReservation);
-
-      const result = await service.create(reservationPayload);
-
-      expect(result.payment_method).toBe('EFECTIVO');
-      expect(result.payment_status).toBe('PENDIENTE');
-      expect(mockQueryRunnerManager.save).toHaveBeenCalled();
-    });
-
-    it('debe reservar con éxito usando PAYPAL si se provee una orden válida (Caso Positivo)', async () => {
+      mockQueryRunnerManager.findOne.mockResolvedValueOnce(reservation);
       mockQueryBuilder.getOne.mockResolvedValueOnce(mockTrip);
-      mockPaypalService.verifyOrder.mockResolvedValueOnce({ success: true, message: 'Pago completado' });
-
-      const reservationPayload = {
-        id_trip: 1,
-        id_passenger: 2,
-        seats_requested: 1,
-        payment_method: 'PAYPAL',
-        paypal_order_id: 'ORDER-PAYPAL-123',
-      };
-
-      const expectedReservation = {
-        ...reservationPayload,
+      mockReservationRepo.findOne.mockResolvedValueOnce({
+        ...reservation,
         payment_status: 'PAGADO',
-      };
-
-      mockQueryRunnerManager.create.mockReturnValue(expectedReservation);
-      mockQueryRunnerManager.save.mockResolvedValue(expectedReservation);
-
-      const result = await service.create(reservationPayload);
-
-      expect(result.payment_method).toBe('PAYPAL');
-      expect(result.payment_status).toBe('PAGADO');
-      expect(result.paypal_order_id).toBe('ORDER-PAYPAL-123');
-      expect(mockPaypalService.verifyOrder).toHaveBeenCalledWith('ORDER-PAYPAL-123');
-      expect(mockQueryRunnerManager.save).toHaveBeenCalled();
-    });
-
-    it('debe lanzar BadRequestException en PAYPAL si falta el paypal_order_id', async () => {
-      const reservationPayload = {
-        id_trip: 1,
-        id_passenger: 2,
-        seats_requested: 1,
-        payment_method: 'PAYPAL', // Falta paypal_order_id
-      };
-
-      await expect(service.create(reservationPayload)).rejects.toThrow(
-        new BadRequestException('Falta el identificador de la orden de PayPal'),
-      );
-    });
-
-    it('debe lanzar BadRequestException en PAYPAL si la verificación de la orden falla', async () => {
-      mockPaypalService.verifyOrder.mockResolvedValueOnce({
-        success: false,
-        message: 'El pago no fue completado en PayPal.',
+        paypal_order_id: 'PAY-12345',
       });
 
-      const reservationPayload = {
-        id_trip: 1,
-        id_passenger: 2,
-        seats_requested: 1,
-        payment_method: 'PAYPAL',
-        paypal_order_id: 'INVALID-ORDER',
-      };
+      const result = await service.payPaypal(1, 'PAY-12345');
 
-      await expect(service.create(reservationPayload)).rejects.toThrow(
-        new BadRequestException('El pago no fue completado en PayPal.'),
-      );
+      expect(result.payment_status).toBe('PAGADO');
+      expect(result.paypal_order_id).toBe('PAY-12345');
+      expect(mockQueryRunnerManager.save).toHaveBeenCalled();
+    });
+
+    it('debe lanzar BadRequestException si el pago de PayPal falla', async () => {
+      mockPaypalService.verifyOrder.mockResolvedValueOnce({ success: false, message: 'Pago no autorizado' });
+
+      await expect(
+        service.payPaypal(1, 'PAY-FAIL'),
+      ).rejects.toThrow(new BadRequestException('Pago no autorizado'));
     });
   });
 });

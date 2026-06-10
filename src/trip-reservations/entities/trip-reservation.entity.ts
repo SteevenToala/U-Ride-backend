@@ -27,6 +27,9 @@ export class TripReservation {
   @Column({ default: 'PENDING' }) // PENDING, ACCEPTED, REJECTED, CANCELLED
   status: string;
 
+  @Column({ name: 'meeting_point', nullable: true })
+  meeting_point: string;
+
   @Column({ nullable: true })
   message: string;
 

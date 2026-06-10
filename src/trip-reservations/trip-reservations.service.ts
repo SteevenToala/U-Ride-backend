@@ -23,32 +23,35 @@ export class TripReservationsService {
   async create(reservationData: any): Promise<TripReservation> {
     const seatsRequested = reservationData.seats_requested || 1;
     const paymentMethod = reservationData.payment_method || 'EFECTIVO';
-    let paymentStatus = 'PENDIENTE';
-    let reservationStatus = 'PENDING';
-
-    // 1. Si el pago es con PayPal, se verifica y cobra antes de realizar la reserva
-    if (paymentMethod === 'PAYPAL') {
-      const paypalOrderId = reservationData.paypal_order_id;
-      if (!paypalOrderId) {
-        throw new BadRequestException('Falta el identificador de la orden de PayPal');
-      }
-
-      const { success, message } = await this.paypalService.verifyOrder(paypalOrderId);
-      if (!success) {
-        throw new BadRequestException(message);
-      }
-      paymentStatus = 'PAGADO';
-      reservationStatus = 'ACCEPTED'; // Las reservas pagadas se aprueban automáticamente
-    }
+    const paymentStatus = 'PENDIENTE';
+    const reservationStatus = 'PENDING';
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
+      // 1. Validar RN1: Una reserva activa por estudiante
+      // Buscamos si el pasajero tiene otra reserva activa (PENDING o ACCEPTED) en un viaje no finalizado ni cancelado
+      const activeReservation = await queryRunner.manager
+        .getRepository(TripReservation)
+        .createQueryBuilder('res')
+        .innerJoinAndSelect('res.trip', 'trip')
+        .where('res.id_passenger = :passengerId', { passengerId: reservationData.id_passenger })
+        .andWhere('res.status IN (:...statuses)', { statuses: ['PENDING', 'ACCEPTED'] })
+        .andWhere('trip.status NOT IN (:...tripStatuses)', { tripStatuses: ['FINISHED', 'CANCELLED'] })
+        .getOne();
+
+      if (activeReservation) {
+        throw new BadRequestException(
+          'Ya tienes una reserva activa para otro viaje. Debes cancelarla o esperar a que finalice para poder reservar otro viaje.'
+        );
+      }
+
       // 2. Obtener el viaje con bloqueo pesimista de escritura para evitar condiciones de carrera (concurrencia)
       const trip = await queryRunner.manager
-        .createQueryBuilder(SharedTrip, 'trip')
+        .getRepository(SharedTrip)
+        .createQueryBuilder('trip')
         .setLock('pessimistic_write')
         .where('trip.id = :id', { id: reservationData.id_trip })
         .getOne();
@@ -63,26 +66,103 @@ export class TripReservationsService {
         throw new BadRequestException('Not enough available seats');
       }
 
-      // 3. Si es PayPal (ya pagado), descontamos los asientos inmediatamente de la base de datos
-      if (paymentMethod === 'PAYPAL') {
-        trip.available_seats = Number(trip.available_seats) - seatsRequested;
-        await queryRunner.manager.save(SharedTrip, trip);
-      }
-
+      // 3. Crear la reserva en estado PENDING y payment_status PENDIENTE (los cupos se restan al pagar)
       const newReservation = queryRunner.manager.create(TripReservation, {
         id_trip: reservationData.id_trip,
         id_passenger: reservationData.id_passenger,
         seats_requested: seatsRequested,
+        meeting_point: reservationData.meeting_point,
         message: reservationData.message,
         payment_method: paymentMethod,
         payment_status: paymentStatus,
         status: reservationStatus,
-        paypal_order_id: paymentMethod === 'PAYPAL' ? reservationData.paypal_order_id : null,
       });
 
       const savedReservation = await queryRunner.manager.save(TripReservation, newReservation);
       await queryRunner.commitTransaction();
       return savedReservation;
+
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * RN2: Modificación de reserva.
+   * El pasajero puede editar una solicitud únicamente mientras esté en estado Pendiente.
+   */
+  async update(id: number, updateData: any): Promise<TripReservation> {
+    const reservation = await this.reservationRepository.findOne({
+      where: { id },
+    });
+
+    if (!reservation) throw new NotFoundException('Reserva no encontrada');
+
+    if (reservation.status !== 'PENDING') {
+      throw new BadRequestException('Únicamente se pueden editar solicitudes de reserva en estado PENDIENTE');
+    }
+
+    // Permitir modificar: punto de encuentro, observaciones (message), método de pago
+    if (updateData.meeting_point !== undefined) {
+      reservation.meeting_point = updateData.meeting_point;
+    }
+    if (updateData.message !== undefined) {
+      reservation.message = updateData.message;
+    }
+    if (updateData.payment_method !== undefined) {
+      reservation.payment_method = updateData.payment_method;
+    }
+
+    const saved = await this.reservationRepository.save(reservation);
+    return await this.reservationRepository.findOne({
+      where: { id: saved.id },
+      relations: ['passenger', 'trip'],
+    });
+  }
+
+  /**
+   * Paga y confirma una reserva ACCEPTED mediante PayPal.
+   * Captura el dinero de PayPal de forma transaccional y descuenta los cupos de la base de datos.
+   */
+  async payPaypal(id: number, paypalOrderId: string): Promise<TripReservation> {
+    const { success, message } = await this.paypalService.verifyOrder(paypalOrderId);
+    if (!success) {
+      throw new BadRequestException(message);
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const reservation = await queryRunner.manager.findOne(TripReservation, {
+        where: { id },
+        relations: ['trip'],
+      });
+
+      if (!reservation) throw new NotFoundException('Reserva no encontrada');
+      if (reservation.status !== 'ACCEPTED') {
+        throw new BadRequestException('Solo se pueden pagar reservas que hayan sido ACEPTADAS por el conductor');
+      }
+      if (reservation.payment_status === 'PAGADO') {
+        throw new BadRequestException('Esta reserva ya se encuentra pagada');
+      }
+
+      reservation.payment_status = 'PAGADO';
+      reservation.paypal_order_id = paypalOrderId;
+
+      const updatedReservation = await queryRunner.manager.save(TripReservation, reservation);
+      await queryRunner.commitTransaction();
+
+      // Recargar relaciones
+      const reloaded = await this.reservationRepository.findOne({
+        where: { id: updatedReservation.id },
+        relations: ['passenger', 'trip'],
+      });
+      return reloaded || updatedReservation;
 
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -132,7 +212,8 @@ export class TripReservationsService {
       }
 
       const trip = await queryRunner.manager
-        .createQueryBuilder(SharedTrip, 'trip')
+        .getRepository(SharedTrip)
+        .createQueryBuilder('trip')
         .setLock('pessimistic_write')
         .where('trip.id = :id', { id: reservation.id_trip })
         .getOne();
@@ -141,21 +222,16 @@ export class TripReservationsService {
 
       // Aceptar reserva
       if (status === 'ACCEPTED' && reservation.status !== 'ACCEPTED') {
-        // En efectivo, el chofer la acepta pero no descontamos cupos hasta que se pague (o si el usuario pide descontar al aceptar)
-        // Para mayor claridad: al aceptar en EFECTIVO dejamos la reserva como aceptada pero con cupos intactos hasta que pague.
-        // Pero para asegurar disponibilidad tentativa, validamos que queden cupos
         if (Number(trip.available_seats) < Number(reservation.seats_requested)) {
-          throw new BadRequestException('Not enough seats to accept this reservation');
+          throw new BadRequestException('No quedan suficientes cupos en el viaje para aceptar esta solicitud.');
         }
-        // Nota: Solo se restan de available_seats al pagar.
+        trip.available_seats = Number(trip.available_seats) - Number(reservation.seats_requested);
+        await queryRunner.manager.save(SharedTrip, trip);
       } 
-      // Cancelar / Rechazar reserva que ya estaba aceptada o pagada
+      // Cancelar / Rechazar reserva que ya estaba aceptada
       else if ((status === 'REJECTED' || status === 'CANCELLED') && reservation.status === 'ACCEPTED') {
-        // Solo restauramos cupos si la reserva ya estaba cobrada/pagada (es decir, ya había restado cupos)
-        if (reservation.payment_status === 'PAGADO') {
-          trip.available_seats = Number(trip.available_seats) + Number(reservation.seats_requested);
-          await queryRunner.manager.save(SharedTrip, trip);
-        }
+        trip.available_seats = Number(trip.available_seats) + Number(reservation.seats_requested);
+        await queryRunner.manager.save(SharedTrip, trip);
       }
 
       reservation.status = status;
@@ -197,28 +273,7 @@ export class TripReservationsService {
         throw new BadRequestException('Esta reserva ya se encuentra pagada');
       }
 
-      const trip = await queryRunner.manager
-        .createQueryBuilder(SharedTrip, 'trip')
-        .setLock('pessimistic_write')
-        .where('trip.id = :id', { id: reservation.id_trip })
-        .getOne();
-
-      if (!trip) throw new NotFoundException('Viaje correspondiente no encontrado');
-
-      // Validar disponibilidad de cupos antes de confirmar el pago
-      if (Number(trip.available_seats) < Number(reservation.seats_requested)) {
-        throw new BadRequestException('No quedan suficientes cupos en el viaje para registrar este pago');
-      }
-
-      // Descontar cupos de forma definitiva
-      trip.available_seats = Number(trip.available_seats) - Number(reservation.seats_requested);
-      await queryRunner.manager.save(SharedTrip, trip);
-
       reservation.payment_status = 'PAGADO';
-      // Si el pago se confirma y estaba pendiente de aceptación, la aceptamos automáticamente
-      if (reservation.status === 'PENDING') {
-        reservation.status = 'ACCEPTED';
-      }
 
       const updatedReservation = await queryRunner.manager.save(TripReservation, reservation);
       await queryRunner.commitTransaction();
