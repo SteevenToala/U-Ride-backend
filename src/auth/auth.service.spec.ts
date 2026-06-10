@@ -28,7 +28,14 @@ describe('AuthService (Unit Tests)', () => {
     sign: jest.fn().mockReturnValue('mocked-token'),
   };
 
+  let consoleLogSpy: jest.SpyInstance;
+  let consoleErrorSpy: jest.SpyInstance;
+
   beforeEach(async () => {
+    // Silenciar console.log y console.error durante las pruebas para mantener limpia la consola
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -55,6 +62,11 @@ describe('AuthService (Unit Tests)', () => {
     // Reset mocks
     jest.clearAllMocks();
     process.env.INSTITUTIONAL_EMAIL_DOMAIN = '@uta.edu.ec';
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   describe('RF-001: Registro con Correo Institucional', () => {

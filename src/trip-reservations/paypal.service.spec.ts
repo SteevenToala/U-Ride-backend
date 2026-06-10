@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PaypalService } from './paypal.service';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { Logger } from '@nestjs/common';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -9,6 +10,8 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('PaypalService (Unit Tests)', () => {
   let service: PaypalService;
   let configService: ConfigService;
+  let loggerErrorSpy: jest.SpyInstance;
+  let loggerLogSpy: jest.SpyInstance;
 
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: string) => {
@@ -20,6 +23,10 @@ describe('PaypalService (Unit Tests)', () => {
   };
 
   beforeEach(async () => {
+    // Silenciar Logger.error y Logger.log durante las pruebas
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaypalService,
@@ -40,6 +47,11 @@ describe('PaypalService (Unit Tests)', () => {
       if (key === 'PAYPAL_ENV') return 'sandbox';
       return defaultValue;
     });
+  });
+
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
+    loggerLogSpy.mockRestore();
   });
 
   it('debe estar definido', () => {
