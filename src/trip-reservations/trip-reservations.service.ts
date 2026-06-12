@@ -102,7 +102,13 @@ export class TripReservationsService {
     if (!reservation) throw new NotFoundException('Reserva no encontrada');
 
     if (reservation.status !== 'PENDING') {
-      throw new BadRequestException('Únicamente se pueden editar solicitudes de reserva en estado PENDIENTE');
+      const isAcceptedAndUnpaid = reservation.status === 'ACCEPTED' && reservation.payment_status === 'PENDIENTE';
+      const hasChangedMeetingPoint = updateData.meeting_point !== undefined && updateData.meeting_point !== reservation.meeting_point;
+      const hasChangedMessage = updateData.message !== undefined && updateData.message !== reservation.message;
+
+      if (!isAcceptedAndUnpaid || hasChangedMeetingPoint || hasChangedMessage) {
+        throw new BadRequestException('Únicamente se pueden editar solicitudes de reserva en estado PENDIENTE');
+      }
     }
 
     // Permitir modificar: punto de encuentro, observaciones (message), método de pago
