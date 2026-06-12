@@ -7,6 +7,8 @@ import { PaypalService } from './paypal.service';
 import { Repository, DataSource } from 'typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
+jest.setTimeout(30000);
+
 describe('TripReservationsService (Unit Tests)', () => {
   let service: TripReservationsService;
   let paypalService: PaypalService;

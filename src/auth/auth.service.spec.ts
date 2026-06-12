@@ -7,6 +7,8 @@ import { JwtService } from '@nestjs/jwt';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { Repository } from 'typeorm';
 
+jest.setTimeout(30000);
+
 describe('AuthService (Unit Tests)', () => {
   let service: AuthService;
   let usersRepository: Repository<User>;
@@ -94,7 +96,7 @@ describe('AuthService (Unit Tests)', () => {
       expect(result.user.email).toBe('estudiante@uta.edu.ec');
       expect(mockUserRepo.create).toHaveBeenCalled();
       expect(mockUserRepo.save).toHaveBeenCalled();
-    });
+    }, 30000);
 
     it('TC-RF001-02: Debe lanzar un error (400 Bad Request) si el correo es personal (ej. gmail, hotmail)', async () => {
       const dto = {

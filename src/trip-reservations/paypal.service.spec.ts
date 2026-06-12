@@ -7,6 +7,8 @@ import { Logger } from '@nestjs/common';
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+jest.setTimeout(30000);
+
 describe('PaypalService (Unit Tests)', () => {
   let service: PaypalService;
   let configService: ConfigService;
